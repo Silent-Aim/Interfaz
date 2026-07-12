@@ -1,1 +1,232 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <title>Silent IA</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$']] }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #08090c;
+      --surface: #0f111a;
+      --border: #1e2235;
+      --accent: #00e5ff;
+      --text: #e2e8f0;
+      --text-dim: #64748b;
+      --user-bubble: #131a2e;
+      --ai-bubble: #0c0e14;
+    }
+    body {
+      height: 100vh; height: 100dvh;
+      background: var(--bg); color: var(--text);
+      font-family: 'DM Mono', monospace;
+      overflow: hidden; display: flex; flex-direction: column;
+    }
+    #api-modal {
+      position: fixed; inset: 0; z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(8,9,12,0.98); backdrop-filter: blur(12px); padding: 20px;
+    }
+    .modal-box {
+      width: 100%; max-width: 400px; background: var(--surface);
+      border: 1px solid var(--border); padding: 30px 24px; text-align: center;
+      border-radius: 8px; box-shadow: 0 0 30px rgba(0,229,255,0.05);
+    }
+    .modal-title { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800; margin-bottom: 20px; }
+    .modal-title span { color: var(--accent); }
+    .modal-input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); padding: 14px; outline: none; border-radius: 4px;
+      font-family: 'DM Mono', monospace; font-size: 14px; margin-bottom: 15px;
+    }
+    .modal-input:focus { border-color: var(--accent); }
+    .btn-primary {
+      width: 100%; background: var(--accent); color: #000;
+      font-family: 'Syne', sans-serif; font-weight: 700; border: none;
+      padding: 14px; cursor: pointer; border-radius: 4px; font-size: 14px;
+    }
+    #app { display: none; flex-direction: column; height: 100%; }
+    header {
+      padding: 16px; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+      background: var(--surface);
+    }
+    .brand { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; }
+    .brand span { color: var(--accent); }
+    #messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+    .msg { display: flex; flex-direction: column; max-width: 85%; }
+    .msg-user { align-self: flex-end; }
+    .msg-ai { align-self: flex-start; }
+    .msg-label { font-size: 10px; color: var(--text-dim); margin-bottom: 4px; padding: 0 4px; }
+    .msg-bubble { padding: 12px 16px; border-radius: 6px; font-size: 14px; line-height: 1.6; word-break: break-word; }
+    .msg-user .msg-bubble { background: var(--user-bubble); border: 1px solid rgba(0,229,255,0.2); }
+    .msg-ai .msg-bubble { background: var(--ai-bubble); border: 1px solid var(--border); }
+    #input-area { padding: 14px; border-top: 1px solid var(--border); background: var(--surface); display: flex; gap: 8px; }
+    #user-input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 12px; outline: none; border-radius: 4px; font-family: 'DM Mono', monospace; resize: none; max-height: 100px; }
+    #send-btn { background: var(--accent); color: #000; border: none; padding: 0 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    .stream-cursor { display: inline-block; width: 2px; height: 14px; background: var(--accent); margin-left: 2px; animation: blink .9s infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+    .msg-bubble pre { background: #000; padding: 12px; border-radius: 4px; margin: 8px 0; overflow-x: auto; font-size: 12px; border: 1px solid var(--border); }
+    .msg-bubble code { color: var(--accent); }
+    .msg-bubble strong { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<div id="api-modal">
+  <div class="modal-box">
+    <div class="modal-title">Silent<span>IA</span></div>
+    <input type="password" id="api-key-input" class="modal-input" placeholder="Introduce tu gsk_ de Groq"/>
+    <button class="btn-primary" onclick="saveApiKey()">Conectar →</button>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <div class="brand">Silent<span>IA</span></div>
+    <div style="font-size: 11px; color: var(--accent);">Groq Conectado</div>
+  </header>
+
+  <div id="messages">
+    <div style="text-align: center; color: var(--text-dim); margin-top: 40px; font-size: 12px;">Sistema en línea. Esperando instrucciones...</div>
+  </div>
+
+  <div id="input-area">
+    <textarea id="user-input" placeholder="Escribe un mensaje..." rows="1"></textarea>
+    <button id="send-btn" onclick="sendMessage()">&gt;</button>
+  </div>
+</div>
+
+<script>
+  let apiKey = localStorage.getItem('silent_groq_key') || '';
+  let messages = [];
+  let isGenerating = false;
+  const MODEL_TEXT = 'llama-3.3-70b-versatile';
+
+  window.onload = () => { if (apiKey) showApp(); initTextarea(); };
+
+  function showApp() {
+    document.getElementById('api-modal').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+  }
+
+  function initTextarea() {
+    const ta = document.getElementById('user-input');
+    ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; });
+  }
+
+  function saveApiKey() {
+    const key = document.getElementById('api-key-input').value.trim();
+    if (key.startsWith('gsk_')) {
+      apiKey = key;
+      localStorage.setItem('silent_groq_key', key);
+      showApp();
+    } else {
+      alert('La clave debe empezar con gsk_');
+    }
+  }
+
+  async function sendMessage() {
+    const input = document.getElementById('user-input');
+    const text = input.value.trim();
+    if (!text || isGenerating) return;
+
+    input.value = ''; input.style.height = 'auto';
+    appendMessage('Tú', text, 'user');
+    messages.push({ role: 'user', content: text });
+
+    isGenerating = true;
+    const { bubbleEl, cursorEl } = appendStreamingMessage('Silent IA');
+
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: MODEL_TEXT,
+          messages: [{ role: 'system', content: 'Eres Silent IA, un asistente avanzado y eficiente. Responde en español de forma directa y limpia.' }, ...messages],
+          stream: true
+        })
+      });
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        for (const line of chunk.split('\n')) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') continue;
+            try {
+              const json = JSON.parse(data);
+              const delta = json.choices[0].delta.content;
+              if (delta) {
+                fullText += delta;
+                bubbleEl.textContent = fullText;
+                bubbleEl.appendChild(cursorEl);
+                document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+              }
+            } catch {}
+          }
+        }
+      }
+      cursorEl.remove();
+      bubbleEl.innerHTML = formatMarkdown(fullText);
+      messages.push({ role: 'assistant', content: fullText });
+      if(window.MathJax) MathJax.typesetPromise([bubbleEl]);
+    } catch {
+      bubbleEl.textContent = '⚠ Error de conexión con Groq.';
+    }
+    isGenerating = false;
+  }
+
+  function appendMessage(sender, text, type) {
+    const container = document.getElementById('messages');
+    const msgEl = document.createElement('div');
+    msgEl.className = `msg msg-${type}`;
+    msgEl.innerHTML = `<div class="msg-label">${sender}</div><div class="msg-bubble">${escapeHtml(text)}</div>`;
+    container.appendChild(msgEl);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function appendStreamingMessage(sender) {
+    const container = document.getElementById('messages');
+    const msgEl = document.createElement('div');
+    msgEl.className = 'msg msg-ai';
+    const label = document.createElement('div');
+    label.className = 'msg-label'; label.textContent = sender;
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    const cursor = document.createElement('span');
+    cursor.className = 'stream-cursor';
+    bubble.appendChild(cursor);
+    msgEl.appendChild(label); msgEl.appendChild(bubble);
+    container.appendChild(msgEl);
+    return { bubbleEl: bubble, cursorEl: cursor };
+  }
+
+  function formatMarkdown(raw) {
+    let t = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    t = t.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+    t = t.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    t = t.replace(/\*\*([^*\n]+)\*\*/g, 'strong>$1</strong>');
+    return t.replace(/\n/g, '<br>');
+  }
+
+  function escapeHtml(t) { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>'); }
+</script>
+</body>
+</html>
